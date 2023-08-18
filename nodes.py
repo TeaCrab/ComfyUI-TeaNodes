@@ -12,7 +12,7 @@ class EqualizeCLAHE:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "images": ("IMAGE", ),
+                "image": ("IMAGE", ),
                 "clip_limit": ("FLOAT", {"default": 64, "min": 0.0, "max": 255, "step": 0.1}),
                 "grid_size": ("INT", {"default": 8, "min": 1, "max": 64, "step": 1}),
             },
@@ -28,12 +28,14 @@ class EqualizeCLAHE:
         _image = image.movedim(-1, 1)
         if size != (1024, 1024):
             grid_ratio = grid_size / clip_limit
-            size_ratio = min(size) / max(size)
-            clip_limit = po2(max(size), True)
-            grid_x = clip_limit * grid_ratio
-            grid_y = max(2, grid_x * size_ratio // 2 * 2)
-            if size[0] < size[1]: grid_x, grid_y = grid_y, grid_x
-        _image = equalize_clahe(_image, clip_limit, (grid_x, grid_y))
+            # size_ratio = min(size) / max(size)
+            clip_limit = int(max(8, po2(max(size)) * (clip_limit / 1024)))
+            grid_size = int(max(2, clip_limit * grid_ratio))
+            print(clip_limit, grid_size)
+            # grid_x = max(2, int(clip_limit * grid_ratio) // 2 * 2)
+            # grid_y = max(2, int(grid_x * size_ratio) // 2 * 2)
+            # if size[0] < size[1]: grid_x, grid_y = grid_y, grid_x
+        _image = equalize_clahe(_image, float(clip_limit), (grid_size, grid_size))
         result = _image.movedim(1, -1)
 
         return (result,)

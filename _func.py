@@ -3,7 +3,7 @@ from math import ceil, floor, log
 
 debouncer = set()
 
-def po2(value, fill=False):
+def po2(value, fill=False) -> int:
     func = ceil if fill else floor
     return pow(2, func(log(value)/log(2)))
 
