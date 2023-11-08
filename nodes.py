@@ -1,10 +1,12 @@
-import os, torch
+import os, torch, random
 import numpy as np
 import comfy.utils
 
+from colorsys import rgb_to_hsv, hsv_to_rgb
+
 from kornia.enhance import equalize_clahe
-from ._func import pixel_approx, po2
-# from .isnet import dis_process
+from ._func import pixel_approx, po2, Color, byte
+from .isnet import dis_process
 from PIL import Image
 
 class EqualizeCLAHE:
@@ -13,12 +15,10 @@ class EqualizeCLAHE:
         return {
             "required": {
                 "image": ("IMAGE", ),
+                "size": ("TUPLE", {"default": (1024, 1024)}),
                 "clip_limit": ("FLOAT", {"default": 64, "min": 0.0, "max": 255, "step": 0.1}),
                 "grid_size": ("INT", {"default": 8, "min": 1, "max": 64, "step": 1}),
             },
-            "optional": {
-                "size": ("TUPLE", {"default": (1024, 1024)}),
-            }
         }
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "equalize"
@@ -75,12 +75,10 @@ class ImageResize:
         return {
             "required": {
                 "image": ("IMAGE",),
+                "size": ("TUPLE", {"default": (1024, 1024)}),
                 "width": ("INT", {"default": 1024, "min": 512, "max": 4096, "step": 32}),
                 "height": ("INT", {"default": 1024, "min": 512, "max": 4096, "step": 32}),
             },
-            "optional": {
-                "size": ("TUPLE", {"default": (1024, 1024)}),
-            }
     }
 
     RETURN_TYPES = ("IMAGE",)
@@ -117,6 +115,42 @@ class ImageScale:
 
         result = comfy.utils.common_upscale(_image, int( width * factor ), int( height * factor ), "area", 'center')
         result = result.movedim(1, -1)
+
+        return (result,)
+
+class RandomColorFill():
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "color": ("STRING", {"default": '#7f7f7fff'}),
+                "hue_range": ("FLOAT", {"default": 0.005}),
+                "sat_range": ("FLOAT", {"default": 0.005}),
+                "val_range": ("FLOAT", {"default": 0.005})
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "randomize"
+    CATEGORY = "TeaNodes/Input"
+
+    def randomize(self, image, color, hue_range, sat_range, val_range):
+        h, s, v, _ = Color(color).hsv()
+        h += hue_range * (random.random() - 0.5)
+        s += sat_range * (random.random() - 0.5)
+        v += val_range * (random.random() - 0.5)
+
+        color_rgba = Color()
+        color_rgba.RGBA = hsv_to_rgb(h, s, v) + (1.0,)
+        print(f"Random Color:\t{color_rgba.hex()}")
+
+        height, width = image.shape[1:3]
+
+        _color = tuple(byte(e) for e in color_rgba.RGBA)
+        _image = Image.new('RGBA', (width, height), _color)
+        _image = np.array(_image.convert('RGBA')).astype(np.float32) / 255.0
+        result = torch.from_numpy(_image).unsqueeze(0)
 
         return (result,)
 
@@ -192,5 +226,6 @@ NODE_CLASS_MAPPINGS = {
     "TC_ImageResize": ImageResize,
     "TC_ImageScale": ImageScale,
     "TC_ColorFill": ColorFill,
-    # "TC_MaskBG_DIS": MaskBG_DIS,
+    "TC_RandomColorFill": RandomColorFill,
+    "TC_MaskBG_DIS": MaskBG_DIS,
 }
