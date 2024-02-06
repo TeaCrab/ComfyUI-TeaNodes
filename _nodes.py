@@ -1,12 +1,11 @@
-import os, torch, random
+import torch, random
 import numpy as np
 import comfy.utils
 
-from colorsys import rgb_to_hsv, hsv_to_rgb
+from colorsys import hsv_to_rgb
 
 from kornia.enhance import equalize_clahe
 from ._func import pixel_approx, po2, Color, byte
-from .isnet import dis_process
 from PIL import Image
 
 class EqualizeCLAHE:
@@ -28,13 +27,10 @@ class EqualizeCLAHE:
         _image = image.movedim(-1, 1)
         if size != (1024, 1024):
             grid_ratio = grid_size / clip_limit
-            # size_ratio = min(size) / max(size)
             clip_limit = int(max(8, po2(max(size)) * (clip_limit / 1024)))
             grid_size = int(max(2, clip_limit * grid_ratio))
             print(clip_limit, grid_size)
-            # grid_x = max(2, int(clip_limit * grid_ratio) // 2 * 2)
-            # grid_y = max(2, int(grid_x * size_ratio) // 2 * 2)
-            # if size[0] < size[1]: grid_x, grid_y = grid_y, grid_x
+
         _image = equalize_clahe(_image, float(clip_limit), (grid_size, grid_size))
         result = _image.movedim(1, -1)
 
@@ -56,7 +52,6 @@ class SizeApproximation:
 
     def calculate(self, image, square):
         _image = image.movedim(-1, 1)
-
         height, width = image.shape[1:3]
 
         # print(width, height)
@@ -65,9 +60,7 @@ class SizeApproximation:
             width, height = pixel_approx(width, height, square)
         else:
             height, width = pixel_approx(height, width, square)
-
         return ((width, height), width, height)
-
 
 class ImageResize:
     @classmethod
@@ -189,37 +182,6 @@ class ColorFill():
 
         return (result,)
 
-# class MaskBG_DIS:
-#     @classmethod
-#     def INPUT_TYPES(s):
-#         return {
-#             "required": {
-#                 "image": ("IMAGE", ),
-#             }
-#         }
-
-#     RETURN_TYPES = ("IMAGE",)
-#     FUNCTION = "process"
-#     CATEGORY = "TeaNodes/Image"
-
-#     def process(self, image):
-#         i = 255. * image[-1].numpy()
-#         img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-
-#         img.save("..\__temp__.png", format='png', pnginfo=None, compress_level=4)
-
-#         images_transformed = dis_process("..\__temp__.png")
-
-#         os.remove("..\__temp__.png")
-
-#         _image = Image.fromarray(images_transformed)
-
-#         _image = _image.image_to_tensor()
-#         _image.unsqueeze_(0)
-#         result = _image.repeat(1,1,1,3)
-
-#         return (result,)
-
 NODE_CLASS_MAPPINGS = {
     "TC_EqualizeCLAHE": EqualizeCLAHE,
     "TC_SizeApproximation": SizeApproximation,
@@ -227,5 +189,4 @@ NODE_CLASS_MAPPINGS = {
     "TC_ImageScale": ImageScale,
     "TC_ColorFill": ColorFill,
     "TC_RandomColorFill": RandomColorFill,
-    "TC_MaskBG_DIS": MaskBG_DIS,
 }
