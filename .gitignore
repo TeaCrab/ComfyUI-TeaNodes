@@ -1,5 +1,6 @@
 isnet/
 _misc.py
+_test.py
 
 # Other GitIgnore Templates:
 .vscode/
