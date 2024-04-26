@@ -29,4 +29,9 @@ Adds a few new nodes:
 *  This works like an easy/complex/idk brightness/contrast/level adjustment node
 *  Image processing power must be utilized for better results.
 
+### Random & Non-Random Color Fill
+*  Fill based on reference image size
+*  Randomness defined by original color and a variance in hue, saturation and value
+*  Hopefully the color input field works for most color string formats.
+
 Don't know how licensing works so code relying on other repos has been ignored for now.
