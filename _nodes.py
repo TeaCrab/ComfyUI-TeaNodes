@@ -1,12 +1,56 @@
 import torch, random
+from torchvision.transforms.functional import center_crop
 import numpy as np
 import comfy.utils
 
 from colorsys import hsv_to_rgb
 
-from kornia.enhance import equalize_clahe
+from kornia.enhance import equalize_clahe, adjust_gamma, add_weighted
 from ._func import pixel_approx, po2, Color, byte
 from PIL import Image
+
+class CropTo:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image_src": ("IMAGE", ),
+                "image_ref": ("IMAGE", ),
+            },
+        }
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "weightedadd"
+    CATEGORY = "TeaNodes/Image"
+
+    def weightedadd(self, image_src, image_ref):
+        R = image_ref.movedim(-1, 1)
+        S = image_src.movedim(-1, 1)
+
+        _image = center_crop(S, R.shape[2:])
+        result = _image.movedim(1, -1)
+
+        return (result,)
+
+class KorniaGamma:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE", ),
+                "gamma": ("FLOAT", {"default": 1, "min": 0.0, "max": 100, "step": 0.01}),
+                "gain": ("FLOAT", {"default": 1.0, "min": -100, "max": 100, "step": 0.01}),
+            },
+        }
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "gamma"
+    CATEGORY = "TeaNodes/Image"
+
+    def gamma(self, image, gamma, gain):
+        _image = image.movedim(-1, 1)
+        _image = adjust_gamma(_image, gamma, gain)
+        result = _image.movedim(1, -1)
+
+        return (result,)
 
 class EqualizeCLAHE:
     @classmethod
@@ -83,7 +127,7 @@ class ImageResize:
 
         if size != (1024, 1024): width, height = size
 
-        result = comfy.utils.common_upscale(_image, int( width ), int( height ), "area", 'center')
+        result = comfy.utils.common_upscale(_image, int( width ), int( height ), 'lanczos', 'center')
         result = result.movedim(1, -1)
         return (result,)
 
@@ -94,6 +138,7 @@ class ImageScale:
             "required": {
                 "image": ("IMAGE",),
                 "factor": ("FLOAT", {"default": 1.0, "min": 0.2, "max": 5.0, "step": 0.01}),
+                # "step" of 0.00 breaks the node graph engine...
         }
     }
 
@@ -106,7 +151,7 @@ class ImageScale:
 
         height, width = image.shape[1:3]
 
-        result = comfy.utils.common_upscale(_image, int( width * factor ), int( height * factor ), "area", 'center')
+        result = comfy.utils.common_upscale(_image, int(width * factor), int(height * factor), 'lanczos', 'center')
         result = result.movedim(1, -1)
 
         return (result,)
@@ -138,13 +183,14 @@ class RandomColorFill():
         color_rgba.RGBA = hsv_to_rgb(h, s, v) + (1.0,)
         print(f"Random Color:\t{color_rgba.hex()}")
 
+        print(type(image))
         height, width = image.shape[1:3]
 
         _color = tuple(byte(e) for e in color_rgba.RGBA)
         _image = Image.new('RGBA', (width, height), _color)
         _image = np.array(_image.convert('RGBA')).astype(np.float32) / 255.0
         result = torch.from_numpy(_image).unsqueeze(0)
-
+        print(type(result))
         return (result,)
 
 class ColorFill():
@@ -183,6 +229,8 @@ class ColorFill():
         return (result,)
 
 NODE_CLASS_MAPPINGS = {
+    "TC_CropTo": CropTo,
+    "TC_KorniaGamma": KorniaGamma,
     "TC_EqualizeCLAHE": EqualizeCLAHE,
     "TC_SizeApproximation": SizeApproximation,
     "TC_ImageResize": ImageResize,
