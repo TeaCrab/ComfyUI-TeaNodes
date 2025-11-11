@@ -33,5 +33,3 @@ Adds a few new nodes:
 *  Fill based on reference image size
 *  Randomness defined by original color and a variance in hue, saturation and value
 *  Hopefully the color input field works for most color string formats.
-
-Don't know how licensing works so code relying on other repos has been ignored for now.
