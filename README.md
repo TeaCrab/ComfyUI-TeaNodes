@@ -33,3 +33,13 @@ Adds a few new nodes:
 *  Fill based on reference image size
 *  Randomness defined by original color and a variance in hue, saturation and value
 *  Hopefully the color input field works for most color string formats.
+
+### Random Lora & Model
+*  Uses regex pattern to filter down files within `models/checkpoints` and `models/loras` and then randomly choose one to load.
+*  `every` parameter allows the chosen model to ran certain number of times.
+*  `pause` parameter allows the chosen model to run indefinitely.
+*  `skip` parameter and changes in `pattern` parameter will trigger a random selection ASAP, `skip` doesn't stop loop counting, but changes in `pattern` will.
+*  Models are pooled, which can lead to maxing out the RAM usage, Python seem to be able to handle this on its own without issue.
+  * If a model has been used before in the same session, the node won't need to access the file from SSD/HDD again, it's already in the RAM.
+*  `RESULT` outputs the working state of the node, use `Preview As Text` or `Show Text` node to understand time until next randomization, which model is being used currently, previously and how many times, or which ones hasn't been used yet from the found files.
+*  If the regex pattern went wrong and there are no models found, a random model will be selected from all available under the respective `checkpoints` or `loras` folder.
