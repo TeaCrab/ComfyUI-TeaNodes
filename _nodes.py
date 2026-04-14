@@ -273,60 +273,61 @@ class ColorFill:
 
         return (result,)
 
-import os
-
-def history_order(data, func=os.path.basename, predicate=lambda e: bool(e), reverse=True):
-    match data:
-        case dict(): return '\n'.join(f"{v:>4d}: {func(k)}" for k, v in sorted((t for t in data.items() if predicate(t)), key=lambda e: e[-1], reverse=reverse))
-        case list()|set()|tuple(): return '\n'.join(f"{func(e)}" for e in data)
-        case _: return ''
 
 import re
+import os
 
 RETYPE = type(re.compile(''))
 
 class Pool:
     def __init__(self, content):
-        self.regex = None
+        self.regex = re.compile('', re.I)
         self.content = content
         self.filtered = []
 
     def sieve(self, pattern):
-        if isinstance(self.regex, RETYPE) and self.regex.pattern == pattern and self.filtered: return None
-        else: self.regex = re.compile(pattern, re.I); self.filtered = [name for name in self.content if self.regex.search(name)]
+        if self.regex.pattern!=pattern or not self.filtered:
+            try: self.regex = re.compile(pattern, re.I)
+            except Exception: return None
+            self.filtered = [name for name in self.content if self.regex.search(name)]
         return True
 
 class LoraPool(Pool):
-    name = 'Lora'
+    name = 'Loras'
     loaded = dict()
     history = dict()
     def __init__(self):
         super().__init__([os.path.join(p, e) for p, _, f in os.walk('ComfyUI\\models\\loras', followlinks=True) for e in f if e.endswith('.safetensors')])
 
 class ModelPool(Pool):
-    name = "Model"
+    name = "Models"
     loaded = dict()
     history = dict()
     def __init__(self):
         super().__init__([os.path.join(p, e) for p, _, f in os.walk('ComfyUI\\models\\checkpoints', followlinks=True) for e in f if e.endswith('.safetensors')])
 
+
 class Randomizer():
     def __init__(self, pool):
         self.path = ''
-        self.pool : Pool = pool
+        self.pool = pool
         self.loop = 0
         self.every = 1
+        self.error = ''
         self.pause = False
 
-    def out(self, skip=False):
-        if not skip: self.loop += 1
-        warn = f"Warning: No {self.pool.name} Found! Using the last available.\n" if not self.pool.filtered else ''
+    def out(self):
+        if not self.pause: self.loop += 1
+        warn = ': '.join(e for e in (
+            f"{self.error}" if self.error else '',
+            f"No {self.pool.name} Found! Using the last available.\n" if not self.pool.filtered else ''
+        ) if e)
         return '\n'.join((
             f"{warn}Loop-<{self.loop}/{self.every}>: {self.path}",
             "\nHistory (has generated with):",
-            history_order(self.pool.history, predicate=lambda e: e in self.pool.filtered),
+            "\n".join(f"{v:>4d}: {os.path.basename(k)}" for k, v in sorted(self.pool.history.items(), key=lambda e: e[-1], reverse=True) if k in self.pool.filtered),
             "\nPool (hasn't generated with):",
-            history_order(self.pool.filtered),
+            "\n".join(os.path.basename(e) for e in self.pool.filtered if e not in self.pool.history),
         ))
 
     def yet(self):
@@ -334,15 +335,15 @@ class Randomizer():
         if not self.path: self.path = random.choice(self.pool.content)
         return self.pause or not self.loop
 
-    def run(self, pattern):
+    def run(self, pattern, force=False):
         self.loop %= self.every
         # Execute the randomization only after every # generations
-        if self.pause or self.loop != 0: return self.path
-        if self.pool.sieve(pattern):
+        if not force and (self.pause or self.loop != 0): return self.path
+        if self.pool.sieve(pattern) is None:
+            self.error = "Invalid Pattern"
+        else:
             if self.path not in self.pool.history: self.pool.history[self.path] = 0
             self.pool.history[self.path] += 1
-        else:
-            self.pool.history = dict()
         if self.pool.filtered: self.path = random.choice(self.pool.filtered)
 
     def get(self):
@@ -365,6 +366,7 @@ class RandomLora:
                 "pattern": ("STRING", {"default": "", "multiline": True, "tooltip": "Regular Expression"}),
                 "every": ("INT", {"default": 7, "min": 1, "max": 99, "tooltip": "Change only takes effect every N generations."}),
                 "pause": ("BOOLEAN", {"default": False, "tooltip": "Pause the randomization and counting, keep generating with current lora."}),
+                "skip": ("BOOLEAN", {"default": False, "tooltip": "Skip curent model."}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "strength_model": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01, "tooltip": "How strongly to modify the diffusion model. This value can be negative."}),
                 "strength_clip": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01, "tooltip": "How strongly to modify the CLIP model. This value can be negative."}),
@@ -389,15 +391,15 @@ class RandomLora:
             model_lora, clip_lora = comfy.sd.load_lora_for_models(model, clip, self.randomizer.get(), strength_model, strength_clip)
             return (model_lora, clip_lora, self.randomizer.out())
 
-    def load_lora(self, model, clip, pattern, every, pause, strength_model, strength_clip, **kwargs):
+    def load_lora(self, model, clip, pattern, every, pause, skip, strength_model, strength_clip, **kwargs):
         self.randomizer.every = every
         self.randomizer.pause = pause
         if strength_model == 0 and strength_clip == 0:
             return (model, clip)
-        if not self.randomizer.yet():
+        if not skip and not self.randomizer.yet():
             return self.try_get(model, clip, strength_clip, strength_model)
         else:
-            self.randomizer.run(pattern)
+            self.randomizer.run(pattern, skip)
             return self.try_get(model, clip, strength_clip, strength_model)
 
 class RandomModel:
@@ -411,8 +413,8 @@ class RandomModel:
                 "pattern": ("STRING", {"default": "", "multiline": True, "tooltip": "Regular Expression"}),
                 "every": ("INT", {"default": 7, "min": 1, "max": 99, "tooltip": "Change only takes effect every N generations."}),
                 "pause": ("BOOLEAN", {"default": False, "tooltip": "Pause the randomization and counting, keep generating with current model."}),
+                "skip": ("BOOLEAN", {"default": False, "tooltip": "Skip curent model."}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                # "ckpt_name": (folder_paths.get_filename_list("checkpoints"), {"tooltip": "The name of the checkpoint (model) to load."}),
             }
         }
     RETURN_TYPES = ("MODEL", "CLIP", "VAE", "STRING")
@@ -434,48 +436,14 @@ class RandomModel:
             self.randomizer.put(comfy.sd.load_checkpoint_guess_config(self.randomizer.path, output_vae=True, output_clip=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))[:3])
             return *self.randomizer.get(), self.randomizer.out()
 
-    def load_checkpoint(self, pattern, every, pause, **kwargs):
+    def load_checkpoint(self, pattern, every, pause, skip, **kwargs):
         self.randomizer.every = every
         self.randomizer.pause = pause
-        if not self.randomizer.yet():
+        if not skip and not self.randomizer.yet():
             return self.try_get()
         else:
-            self.randomizer.run(pattern)
+            self.randomizer.run(pattern, skip)
             return self.try_get()
-
-# class RegexCkptList:
-#     @classmethod
-#     def INPUT_TYPES(s):
-#         return {
-#             "required": {
-#                 "regex": ("STRING", {"default": ""}),
-#                 "ckpt_name": (
-#                     folder_paths.get_filename_list("checkpoints"),
-#                     {"tooltip": "The name of the checkpoint (model) to load."},
-#                 ),
-#             }
-#         }
-
-#     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
-#     OUTPUT_TOOLTIPS = (
-#         "The model used for denoising latents.",
-#         "The CLIP model used for encoding text prompts.",
-#         "The VAE model used for encoding and decoding images to and from latent space.",
-#     )
-#     FUNCTION = "load_checkpoint"
-
-#     CATEGORY = "loaders"
-#     DESCRIPTION = "Loads a diffusion model checkpoint, diffusion models are used to denoise latents."
-
-#     def load_checkpoint(self, ckpt_name):
-#         ckpt_path = folder_paths.get_full_path_or_raise("checkpoints", ckpt_name)
-#         out = comfy.sd.load_checkpoint_guess_config(
-#             ckpt_path,
-#             output_vae=True,
-#             output_clip=True,
-#             embedding_directory=folder_paths.get_folder_paths("embeddings"),
-#         )
-#         return out[:3]
 
 
 NODE_CLASS_MAPPINGS = {
