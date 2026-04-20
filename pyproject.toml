@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-teanodes"
+description = "Nodes:TC_EqualizeCLAHE, TC_SizeApproximation, TC_ImageResize, TC_ImageScale, TC_ColorFill."
+version = "1.0.0"
+license = "LICENSE"
+
+[project.urls]
+Repository = "https://github.com/TeaCrab/ComfyUI-TeaNodes"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-TeaNodes"
+Icon = ""
